@@ -331,6 +331,18 @@ void getPitchDataForAtBat(String gameId, int atBatIndex) {
     bool hasEndSpeed = false;
     bool hasXCoord = false;
     bool hasYCoord = false;
+    // Add new tracking variables
+    bool hasPitchType = false;
+    String pitchType = "";
+    String pitchDescription = "";
+    float strikeZoneTop = 0;
+    float strikeZoneBottom = 0;
+    float pX = 0;
+    float pZ = 0;
+    bool hasStrikeZoneTop = false;
+    bool hasStrikeZoneBottom = false;
+    bool hasPX = false;
+    bool hasPZ = false;
     
     Serial.println("Starting to parse pitch data...");
     
@@ -351,31 +363,57 @@ void getPitchDataForAtBat(String gameId, int atBatIndex) {
             } else if(curlyBraceLevel == 4 && inPitchData && !processedAtBat) {
               inPitch = true;
               hasStartSpeed = hasEndSpeed = hasXCoord = hasYCoord = false;
+              hasPitchType = false;
+              hasStrikeZoneTop = hasStrikeZoneBottom = hasPX = hasPZ = false;
+              pitchType = "";
+              pitchDescription = "";
             }
           } else if(c == '}') {
             if(inPitch && curlyBraceLevel == 4) {
               inPitch = false;
-              if(foundTargetAtBat && !processedAtBat && (hasStartSpeed || hasEndSpeed || hasXCoord || hasYCoord)) {
+              if(foundTargetAtBat && !processedAtBat) {
                 Serial.print("Pitch #");
                 Serial.println(++pitchCount);
                 
+                if(hasPitchType) {
+                    Serial.print("Type: ");
+                    Serial.print(pitchType);
+                    Serial.print(" - ");
+                    Serial.println(pitchDescription);
+                }
                 if(hasStartSpeed) {
-                  Serial.print("Start Speed: ");
-                  Serial.print(startSpeed);
-                  Serial.println(" mph");
+                    Serial.print("Start Speed: ");
+                    Serial.print(startSpeed);
+                    Serial.println(" mph");
                 }
                 if(hasEndSpeed) {
-                  Serial.print("End Speed: ");
-                  Serial.print(endSpeed);
-                  Serial.println(" mph");
+                    Serial.print("End Speed: ");
+                    Serial.print(endSpeed);
+                    Serial.println(" mph");
+                }
+                if(hasStrikeZoneTop) {
+                    Serial.print("Strike Zone Top: ");
+                    Serial.println(strikeZoneTop);
+                }
+                if(hasStrikeZoneBottom) {
+                    Serial.print("Strike Zone Bottom: ");
+                    Serial.println(strikeZoneBottom);
+                }
+                if(hasPX) {
+                    Serial.print("pX: ");
+                    Serial.println(pX);
+                }
+                if(hasPZ) {
+                    Serial.print("pZ: ");
+                    Serial.println(pZ);
                 }
                 if(hasXCoord) {
-                  Serial.print("X Coordinate: ");
-                  Serial.println(xCoord);
+                    Serial.print("X Coordinate: ");
+                    Serial.println(xCoord);
                 }
                 if(hasYCoord) {
-                  Serial.print("Y Coordinate: ");
-                  Serial.println(yCoord);
+                    Serial.print("Y Coordinate: ");
+                    Serial.println(yCoord);
                 }
                 Serial.println("---");
               }
@@ -402,8 +440,15 @@ void getPitchDataForAtBat(String gameId, int atBatIndex) {
                 valueStr = "";
               } else if(keyName == "pitchData") {
                 inPitchData = true;
-              } else if(inPitchData && (keyName == "startSpeed" || keyName == "endSpeed" || 
-                       keyName == "x" || keyName == "y")) {
+              } else if(keyName == "details") {
+                // Add tracking for details section
+                inValue = true;
+                valueStr = "";
+              } else if((inPitchData && (keyName == "startSpeed" || keyName == "endSpeed" || 
+                     keyName == "x" || keyName == "y" || 
+                     keyName == "strikeZoneTop" || keyName == "strikeZoneBottom" ||
+                     keyName == "pX" || keyName == "pZ")) ||
+                     (!inPitchData && (keyName == "code" || keyName == "description"))) {
                 inValue = true;
                 valueStr = "";
               }
@@ -411,31 +456,48 @@ void getPitchDataForAtBat(String gameId, int atBatIndex) {
           } else if(inKey && inQuotes) {
             keyName += c;
           } else if(inValue) {
-            if((isDigit(c) || c == '.' || c == '-') && valueStr.length() < 10) {
-              valueStr += c;
+            if((isDigit(c) || c == '.' || c == '-' || c == '\"') && valueStr.length() < 30) {
+                valueStr += c;
             } else if(c == ',' || c == '}') {
-              if(keyName == "atBatIndex" && inAllPlay) {
-                if(valueStr.toInt() == atBatIndex && !foundTargetAtBat) {
-                  foundTargetAtBat = true;
-                  Serial.print("Found target at-bat #");
-                  Serial.println(atBatIndex);
+                if(keyName == "atBatIndex" && inAllPlay) {
+                    if(valueStr.toInt() == atBatIndex && !foundTargetAtBat) {
+                        foundTargetAtBat = true;
+                        Serial.print("Found target at-bat #");
+                        Serial.println(atBatIndex);
+                    }
+                } else if((inPitchData || keyName == "code" || keyName == "description") && foundTargetAtBat) {
+                    if(keyName == "code") {
+                        pitchType = valueStr;
+                    } else if(keyName == "description") {
+                        pitchDescription = valueStr;
+                        hasPitchType = true;
+                    } else if(keyName == "startSpeed") {
+                        startSpeed = valueStr.toFloat();
+                        hasStartSpeed = true;
+                    } else if(keyName == "endSpeed") {
+                        endSpeed = valueStr.toFloat();
+                        hasEndSpeed = true;
+                    } else if(keyName == "strikeZoneTop") {
+                        strikeZoneTop = valueStr.toFloat();
+                        hasStrikeZoneTop = true;
+                    } else if(keyName == "strikeZoneBottom") {
+                        strikeZoneBottom = valueStr.toFloat();
+                        hasStrikeZoneBottom = true;
+                    } else if(keyName == "pX") {
+                        pX = valueStr.toFloat();
+                        hasPX = true;
+                    } else if(keyName == "pZ") {
+                        pZ = valueStr.toFloat();
+                        hasPZ = true;
+                    } else if(keyName == "x") {
+                        xCoord = valueStr.toFloat();
+                        hasXCoord = true;
+                    } else if(keyName == "y") {
+                        yCoord = valueStr.toFloat();
+                        hasYCoord = true;
+                    }
                 }
-              } else if(inPitchData && foundTargetAtBat) {
-                if(keyName == "startSpeed") {
-                  startSpeed = valueStr.toFloat();
-                  hasStartSpeed = true;
-                } else if(keyName == "endSpeed") {
-                  endSpeed = valueStr.toFloat();
-                  hasEndSpeed = true;
-                } else if(keyName == "x") {
-                  xCoord = valueStr.toFloat();
-                  hasXCoord = true;
-                } else if(keyName == "y") {
-                  yCoord = valueStr.toFloat();
-                  hasYCoord = true;
-                }
-              }
-              inValue = false;
+                inValue = false;
             }
           }
         }
